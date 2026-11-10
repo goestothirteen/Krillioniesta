@@ -65,6 +65,13 @@ async def test_undo_and_clear(store: Store):
     assert (await store.players(-1)) == {}  # no players were registered via upsert here
 
 
+async def test_swap_board_message_returns_previous(store: Store):
+    assert await store.swap_board_message(-1, 10) is None
+    assert await store.swap_board_message(-1, 11) == 10
+    assert await store.swap_board_message(-1, 11) is None  # same card again → nothing to delete
+    assert await store.swap_board_message(-2, 5) is None  # per chat
+
+
 async def test_mark_posted_is_idempotent(store: Store):
     assert await store.mark_posted(-1, "daily", "118")
     assert not await store.mark_posted(-1, "daily", "118")

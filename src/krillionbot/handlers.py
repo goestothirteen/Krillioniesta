@@ -5,7 +5,7 @@ from datetime import timedelta
 
 from aiogram import Bot, F, Router
 from aiogram.enums import ChatMemberStatus, ChatType
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters import Command, CommandObject
 from aiogram.types import CallbackQuery, ChatMemberUpdated, Message, User
 
@@ -90,10 +90,22 @@ async def render_view(key: str, store: Store, chat_id: int, user: User) -> str:
     return await render_today(store, chat_id, today)
 
 
+async def post_card(bot: Bot, store: Store, chat_id: int, text: str, key: str) -> Message:
+    """Post a board card and take down the previous one, so only the latest card sits in the chat."""
+    sent = await bot.send_message(chat_id, text, reply_markup=board_views(key))
+    previous = await store.swap_board_message(chat_id, sent.message_id)
+    if previous is not None:
+        try:
+            await bot.delete_message(chat_id, previous)
+        except (TelegramBadRequest, TelegramForbiddenError):
+            pass  # older than 48h without admin rights, or already gone
+    return sent
+
+
 async def send_board(msg: Message, store: Store, key: str) -> None:
     assert msg.from_user is not None
     text = await render_view(key, store, msg.chat.id, msg.from_user)
-    await msg.answer(text, reply_markup=board_views(key))
+    await post_card(msg.bot, store, msg.chat.id, text, key)
 
 
 @router.callback_query(F.data.startswith("v:"))
@@ -166,8 +178,8 @@ async def on_paste(msg: Message, store: Store) -> None:
 
 
 @router.message(Command("start", "help"))
-async def on_help(msg: Message) -> None:
-    await msg.reply(views.HELP, reply_markup=board_views("help"))
+async def on_help(msg: Message, store: Store) -> None:
+    await post_card(msg.bot, store, msg.chat.id, views.HELP, "help")
 
 
 @router.message(Command("board"))
@@ -349,12 +361,14 @@ async def on_membership(event: ChatMemberUpdated, bot: Bot, store: Store, settin
     if new in {ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR}:
         await store.ensure_chat(chat.id, chat.title or chat.full_name)
         monday = week_start(dive_date(current_dive()))
-        await bot.send_message(
+        await post_card(
+            bot,
+            store,
             chat.id,
             "🦐 <b>Krillioniesta reporting for duty.</b>\n"
             "Paste your Krillion results here and I'll keep the daily, weekly and all-time boards. "
             f"This week started {fmt_date(monday)}. Type /help for the commands.",
-            reply_markup=board_views("today"),
+            "today",
         )
     elif new in {ChatMemberStatus.LEFT, ChatMemberStatus.KICKED}:
         await store.forget_chat(chat.id)

@@ -38,6 +38,10 @@ CREATE TABLE IF NOT EXISTS forfeits (
     added_by    INTEGER,
     used_week   TEXT
 );
+CREATE TABLE IF NOT EXISTS board_msgs (
+    chat_id     INTEGER PRIMARY KEY,
+    message_id  INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS posted (
     chat_id     INTEGER NOT NULL,
     kind        TEXT NOT NULL,   -- 'daily' | 'weekly' | 'nudge'
@@ -261,6 +265,21 @@ class Store:
         await self.db.execute("UPDATE forfeits SET used_week=? WHERE id=?", (week_key, row["id"]))
         await self.db.commit()
         return row["text"]
+
+    # -- the one live board card per chat ----------------------------------------
+
+    async def swap_board_message(self, chat_id: int, message_id: int) -> int | None:
+        """Remember the newest board card; return the previous card's id so it can be deleted."""
+        cur = await self.db.execute("SELECT message_id FROM board_msgs WHERE chat_id=?", (chat_id,))
+        row = await cur.fetchone()
+        previous = row["message_id"] if row else None
+        await self.db.execute(
+            "INSERT INTO board_msgs (chat_id, message_id) VALUES (?, ?) "
+            "ON CONFLICT(chat_id) DO UPDATE SET message_id=excluded.message_id",
+            (chat_id, message_id),
+        )
+        await self.db.commit()
+        return previous if previous != message_id else None
 
     # -- idempotent posting ------------------------------------------------
 
