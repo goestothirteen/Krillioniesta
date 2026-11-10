@@ -6,6 +6,8 @@ services:
     container_name: krillion-bot
     restart: unless-stopped
     env_file: .env
+    # Run as the host user that owns ./data so SQLite can write to the bind mount.
+    user: "${PUID:-1000}:${PGID:-1000}"
     environment:
       TZ: Asia/Singapore
       DB_PATH: /data/krillion.db
