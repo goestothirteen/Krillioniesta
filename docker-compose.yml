@@ -14,7 +14,7 @@ services:
     volumes:
       - ./data:/data
     # The droplet is snug on RAM; guard against runaway growth.
-    mem_limit: 150m
+    mem_limit: 256m
     logging:
       driver: json-file
       options:
