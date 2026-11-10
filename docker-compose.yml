@@ -1,0 +1,20 @@
+name: krillion-bot
+
+services:
+  bot:
+    build: .
+    container_name: krillion-bot
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TZ: Asia/Singapore
+      DB_PATH: /data/krillion.db
+    volumes:
+      - ./data:/data
+    # The droplet is snug on RAM; guard against runaway growth.
+    mem_limit: 150m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
