@@ -98,6 +98,8 @@ async def test_views_render(store: Store):
     week = views.weekly_board(monday, rows, players, dives_done=2, final=True, owed=owed)
     assert "Week winner: Mark &lt;3" in week and "Sing a song</b> ⏳ still owed" in week
     assert 'tg://user?id=2' in week and "1/7 dives" in week
+    assert "<b>415</b>\n      <i>1/7 dives · avg 415 · best 415</i>\n\n🥈 Zoey" in week
+    assert "blockquote" not in week
     # Looking back at a week with nothing recorded never claims the jar is empty…
     assert "jar" not in views.weekly_board(monday, rows, players, 2, final=True)
     # …only the Sunday post itself does.

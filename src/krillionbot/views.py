@@ -130,15 +130,11 @@ def weekly_board(monday: date, rows: list[WeekRow], players: dict[int, Player], 
         lines.append("<i>Nobody has dived this week yet.</i>")
         return "\n".join(lines)
     ranked = {r.user_id: r for r in rank([(w.user_id, w.total) for w in rows])}
-    details = []
-    for w in rows:
+    for i, w in enumerate(rows):
+        if i:
+            lines.append("")  # breathing room between people
         lines.append(f"{_place(ranked[w.user_id])} {name_of(players, w.user_id)}  <b>{_n(w.total)}</b>")
-        extras = f"{w.played}/7 dives · avg {_n(w.average)} · best {w.best}"
-        if w.gems:
-            extras += f" · 🌟{w.gems}"
-        if w.clowns:
-            extras += f" · 🤡{w.clowns}"
-        details.append(f"{name_of(players, w.user_id)} — {extras}")
+        lines.append(f"      <i>{w.played}/7 dives · avg {_n(w.average)} · best {w.best}</i>")
 
     owed = owed or []
     losers = [o.user_id for o in owed] or week_losers(rows)
@@ -164,7 +160,6 @@ def weekly_board(monday: date, rows: list[WeekRow], players: dict[int, Player], 
                 lines.append("🎲 No forfeits in the jar — add some with /forfeit add …")
         elif losers:
             lines.append("💀 Forfeit zone: " + _and([name_of(players, u) for u in losers]))
-    lines.append(_details("The small print", details))
     return "\n".join(lines)
 
 
@@ -176,8 +171,9 @@ def alltime_board(rows: list[AllTime], players: dict[int, Player], total_dives_l
     if not rows:
         lines.append("<i>Nothing logged yet. Paste a Krillion result to start.</i>")
         return "\n".join(lines)
-    details = []
     for i, a in enumerate(rows, start=1):
+        if i > 1:
+            lines.append("")
         place = MEDALS.get(i, f"{i}.")
         bits = [f"{a.dives} dives", f"total {_n(a.total)}", f"best {a.best}"]
         if a.wins:
@@ -189,9 +185,9 @@ def alltime_board(rows: list[AllTime], players: dict[int, Player], total_dives_l
         if a.current_streak >= 2:
             bits.append(f"🔥{a.current_streak}")
         lines.append(f"{place} {name_of(players, a.user_id)}  <b>{_n(a.average)}</b>")
-        details.append(f"{name_of(players, a.user_id)} — {' · '.join(bits)}")
-    details.append("<i>👑 daily wins · 🌟 gems · 🤡 Too Clevers · 🔥 current streak</i>")
-    lines.append(_details("The small print", details))
+        lines.append(f"      <i>{' · '.join(bits)}</i>")
+    lines.append("")
+    lines.append("<i>👑 daily wins · 🌟 gems · 🤡 Too Clevers · 🔥 current streak</i>")
     return "\n".join(lines)
 
 
