@@ -21,6 +21,7 @@ COMMANDS = [
     BotCommand(command="me", description="Your own stats"),
     BotCommand(command="forfeit", description="The forfeit jar"),
     BotCommand(command="yesterday", description="Yesterday's board"),
+    BotCommand(command="questions", description="Yesterday's questions, with everyone's emoji"),
     BotCommand(command="undo", description="Remove your own last result"),
     BotCommand(command="clear", description="Admin: clear a dive or everything"),
     BotCommand(command="tiers", description="What each emoji is worth"),

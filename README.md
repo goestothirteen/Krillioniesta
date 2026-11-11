@@ -28,8 +28,12 @@ against the score, so an edited paste is rejected. Unlimited results
   who dived at least once that week are ranked. The forfeit is recorded against
   whoever finished last (a tie shares it) and stays on the "still owed" list
   until they send `/forfeit done`.
-- Boards show just place, name and score; the extra stats and emoji strips sit
-  in a fold-out block underneath.
+- Boards put each person's score on one line and their stats (or emoji strip)
+  on the next, with a blank line between people.
+- After the wrap it posts the dive question by question: each prompt with
+  everyone's emoji. The prompts come from the feed krillion.io's own page uses
+  (`questions.py`, best-effort, once or twice a day). Never shown for a dive
+  that is still open. `/questions` shows the last closed dive.
 - Evening nudge (21:00 SGT) tagging anyone active in the last 7 dives who
   hasn't posted today's.
 - `/today` `/yesterday` `/week` `/week last` `/alltime` `/me` `/forfeit` `/tiers` `/help`

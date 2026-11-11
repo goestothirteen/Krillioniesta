@@ -47,6 +47,12 @@ CREATE TABLE IF NOT EXISTS forfeit_log (
     done_at     TEXT,
     UNIQUE (chat_id, week, user_id)
 );
+CREATE TABLE IF NOT EXISTS prompts (
+    dive        INTEGER NOT NULL,
+    idx         INTEGER NOT NULL,
+    text        TEXT NOT NULL,
+    PRIMARY KEY (dive, idx)
+);
 CREATE TABLE IF NOT EXISTS board_msgs (
     chat_id     INTEGER PRIMARY KEY,
     message_id  INTEGER NOT NULL
@@ -330,6 +336,19 @@ class Store:
     @staticmethod
     def _owed(r: aiosqlite.Row) -> Owed:
         return Owed(r["id"], r["week"], r["user_id"], r["text"], r["done_at"] is not None)
+
+    # -- the day's prompts (the same for every chat) ---------------------------
+
+    async def save_prompts(self, dive: int, texts: list[str]) -> None:
+        await self.db.executemany(
+            "INSERT OR REPLACE INTO prompts (dive, idx, text) VALUES (?, ?, ?)",
+            [(dive, i, t) for i, t in enumerate(texts)],
+        )
+        await self.db.commit()
+
+    async def prompts(self, dive: int) -> list[str]:
+        cur = await self.db.execute("SELECT text FROM prompts WHERE dive=? ORDER BY idx", (dive,))
+        return [r["text"] for r in await cur.fetchall()]
 
     # -- the one live board card per chat ----------------------------------------
 

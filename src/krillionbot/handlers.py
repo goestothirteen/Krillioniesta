@@ -44,6 +44,13 @@ async def render_today(store: Store, chat_id: int, dive: int) -> str:
     return views.today_board(dive, results, daily_board(results), players, waiting, live)
 
 
+async def render_questions(store: Store, chat_id: int, dive: int) -> str:
+    """Question by question — callers only pass a dive that has already closed (no spoilers)."""
+    results = await store.results_for_dive(chat_id, dive)
+    players = await store.players(chat_id)
+    return views.questions_board(dive, results, daily_board(results), players, await store.prompts(dive))
+
+
 async def render_week(store: Store, chat_id: int, monday, final: bool, announce: bool = False) -> str:
     dives = week_dives(monday)
     results = await store.results_for_dives(chat_id, dives)
@@ -88,6 +95,8 @@ async def render_view(key: str, store: Store, chat_id: int, user: User) -> str:
             return await render_today(store, chat_id, today)
         case "yesterday":
             return await render_today(store, chat_id, today - 1)
+        case "questions":
+            return await render_questions(store, chat_id, today - 1)  # the last dive that closed
         case "week":
             return await render_week(store, chat_id, monday, final=False)
         case "lastweek":
@@ -209,6 +218,11 @@ async def on_today(msg: Message, store: Store) -> None:
 @router.message(Command("yesterday"))
 async def on_yesterday(msg: Message, store: Store) -> None:
     await send_board(msg, store, "yesterday")
+
+
+@router.message(Command("questions", "q"))
+async def on_questions(msg: Message, store: Store) -> None:
+    await send_board(msg, store, "questions")
 
 
 @router.message(Command("week"))

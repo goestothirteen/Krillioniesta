@@ -53,25 +53,21 @@ def ack_lines(name: str, res: ShareResult, prev_best: int | None) -> list[str]:
     return lines
 
 
-def _details(title: str, lines: list[str]) -> str:
-    """The small print, folded away under the standings (tap to expand)."""
-    return f"<blockquote expandable><b>{title}</b>\n" + "\n".join(lines) + "</blockquote>"
-
-
 def _and(names: list[str]) -> str:
     return " & ".join(names)
 
 
 def _dive_lines(results: list[Result], ranked: list[Ranked], players: dict[int, Player]) -> list[str]:
+    """Name and score, the emoji strip underneath, and a blank line between people."""
     by_user = {r.user_id: r for r in results}
-    return [f"{_place(r)} {name_of(players, r.user_id)}  <b>{by_user[r.user_id].score}</b>" for r in ranked]
-
-
-def _strips(results: list[Result], ranked: list[Ranked], players: dict[int, Player]) -> str:
-    """Emoji strip first: the strips are all the same width, so the names line up."""
-    by_user = {r.user_id: r for r in results}
-    return _details("Answer by answer",
-                    [f"{by_user[r.user_id].tiers}  {name_of(players, r.user_id)}" for r in ranked])
+    lines: list[str] = []
+    for i, r in enumerate(ranked):
+        if i:
+            lines.append("")
+        res = by_user[r.user_id]
+        lines.append(f"{_place(r)} {name_of(players, r.user_id)}  <b>{res.score}</b>")
+        lines.append(f"      {res.tiers}")
+    return lines
 
 
 def today_board(dive: int, results: list[Result], ranked: list[Ranked], players: dict[int, Player],
@@ -87,8 +83,6 @@ def today_board(dive: int, results: list[Result], ranked: list[Ranked], players:
     if waiting:
         lines.append("")
         lines.append("⏳ Still to dive: " + ", ".join(name_of(players, u) for u in waiting))
-    if ranked:
-        lines.append(_strips(results, ranked, players))
     return "\n".join(lines)
 
 
@@ -107,8 +101,26 @@ def daily_wrap(dive: int, results: list[Result], ranked: list[Ranked], players: 
             lines.append("👑 Shared top spot: " + _and([name_of(players, t.user_id) for t in top]))
         if bottom_score != ranked[0].score:
             lines.append("🫧 Plankton of the day: " + _and([name_of(players, b.user_id) for b in bottom]))
-    if ranked:
-        lines.append(_strips(results, ranked, players))
+    return "\n".join(lines)
+
+
+def questions_board(dive: int, results: list[Result], ranked: list[Ranked], players: dict[int, Player],
+                    prompts: list[str]) -> str:
+    """Each prompt with everyone's emoji for it. Only ever shown for a dive that has closed."""
+    lines = [f"❓ <b>Dive #{dive} · question by question</b>", f"<i>{fmt_date(dive_date(dive))}</i>"]
+    if not ranked:
+        lines += ["", "<i>Nobody dived that day.</i>"]
+        return "\n".join(lines)
+    by_user = {r.user_id: r for r in results}
+    strips = {u: list(res.tiers) for u, res in by_user.items()}  # stored strips are one char per prompt
+    count = max([len(prompts), *(len(s) for s in strips.values())])
+    for i in range(count):
+        lines.append("")
+        label = escape(prompts[i]) if i < len(prompts) else "<i>(question not saved)</i>"
+        lines.append(f"<b>{i + 1}.</b> {label}")
+        picks = [f"{name_of(players, r.user_id)} {strips[r.user_id][i]}"
+                 for r in ranked if i < len(strips[r.user_id])]
+        lines.append("      " + " · ".join(picks))
     return "\n".join(lines)
 
 
@@ -238,6 +250,7 @@ HELP = (
     "I log it and show the standings.\n\n"
     "/today — today's board\n"
     "/week — this week's board (Mon–Sun). /week last for last week\n"
+    "/questions — the last finished dive, question by question (only after it closes — no spoilers)\n"
     "/alltime — lifetime table\n"
     "/me — your own stats\n"
     "/forfeit — the forfeit jar (add / remove). Lowest weekly total draws one; "

@@ -87,7 +87,7 @@ async def test_views_render(store: Store):
 
     today = views.today_board(118, rs, ranked, players, waiting=[], live=True)
     assert "🥇 Mark &lt;3  <b>415</b>" in today and "Tue 10 Nov" in today
-    assert "<blockquote expandable>" in today and "🦑🦑🦑🏮🦑🦑🐟  Mark &lt;3" in today
+    assert "<b>415</b>\n      🦑🦑🦑🏮🦑🦑🐟\n\n🥈 Zoey" in today and "blockquote" not in today
 
     wrap = views.daily_wrap(118, rs, ranked, players)
     assert "Diver of the day: Mark &lt;3" in wrap and "Plankton of the day: Zoey" in wrap

@@ -14,7 +14,8 @@ from . import views
 from .config import Settings
 from .db import Store
 from .dives import NY, SG, current_dive, dive_date, week_of_dive
-from .handlers import active_players, close_week
+from .handlers import active_players, close_week, render_questions
+from .questions import remember_today
 from .stats import daily_board
 
 log = logging.getLogger(__name__)
@@ -38,6 +39,8 @@ async def wrap_dive(bot: Bot, store: Store, chat_id: int, dive: int) -> None:
     if await store.mark_posted(chat_id, "daily", str(dive)):
         players = await store.players(chat_id)
         await _send(bot, store, chat_id, views.daily_wrap(dive, results, daily_board(results), players))
+        # The dive is over, so the questions can come out.
+        await _send(bot, store, chat_id, await render_questions(store, chat_id, dive))
 
     if dive_date(dive).weekday() == 6:  # Sunday closes the week
         monday = week_of_dive(dive)
@@ -48,11 +51,13 @@ async def wrap_dive(bot: Bot, store: Store, chat_id: int, dive: int) -> None:
 
 async def daily_job(bot: Bot, store: Store) -> None:
     dive = current_dive()  # runs minutes before reset, so this is the closing dive
+    await remember_today(store)  # normally already stored by the evening job; this is the last chance
     for chat_id in await store.chat_ids():
         await wrap_dive(bot, store, chat_id, dive)
 
 
 async def nudge_job(bot: Bot, store: Store) -> None:
+    await remember_today(store)
     dive = current_dive()
     for chat_id in await store.chat_ids():
         posted = {r.user_id for r in await store.results_for_dive(chat_id, dive)}
@@ -66,6 +71,7 @@ async def nudge_job(bot: Bot, store: Store) -> None:
 
 async def catch_up(bot: Bot, store: Store, days: int = 3) -> None:
     """On startup, post any wraps that were missed while the bot was down."""
+    await remember_today(store)
     today = current_dive()
     for chat_id in await store.chat_ids():
         for dive in range(today - days, today):
