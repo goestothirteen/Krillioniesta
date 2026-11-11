@@ -15,7 +15,7 @@ from .db import Player, Store
 from .dives import current_dive, dive_date, fmt_date, week_dives, week_of_dive, week_start
 from .keyboards import board_views, confirm
 from .parser import ParseError, looks_like_result, parse_share
-from .stats import all_time, daily_board, personal_best_before, weekly_board
+from .stats import all_time, daily_board, personal_best_before, week_losers, weekly_board
 
 log = logging.getLogger(__name__)
 router = Router(name="krillion")
@@ -44,14 +44,27 @@ async def render_today(store: Store, chat_id: int, dive: int) -> str:
     return views.today_board(dive, results, daily_board(results), players, waiting, live)
 
 
-async def render_week(store: Store, chat_id: int, monday, final: bool, forfeit: str | None = None) -> str:
+async def render_week(store: Store, chat_id: int, monday, final: bool, announce: bool = False) -> str:
     dives = week_dives(monday)
     results = await store.results_for_dives(chat_id, dives)
     players = await store.players(chat_id)
     rows = weekly_board(results, dives)
     today = current_dive()
     dives_done = sum(1 for d in dives if d <= today)
-    return views.weekly_board(monday, rows, players, dives_done, final, forfeit)
+    owed = await store.week_forfeits(chat_id, monday.isoformat()) if final else []
+    return views.weekly_board(monday, rows, players, dives_done, final, owed, announce)
+
+
+async def close_week(store: Store, chat_id: int, monday) -> str:
+    """Sunday night: draw a forfeit, pin it on whoever finished last, and return the final board."""
+    dives = week_dives(monday)
+    key = monday.isoformat()
+    losers = week_losers(weekly_board(await store.results_for_dives(chat_id, dives), dives))
+    if losers and not await store.week_forfeits(chat_id, key):
+        text = await store.draw_forfeit(chat_id, key)
+        if text:
+            await store.assign_forfeit(chat_id, key, losers, text)
+    return await render_week(store, chat_id, monday, final=True, announce=True)
 
 
 async def render_alltime(store: Store, chat_id: int) -> str:
@@ -84,7 +97,8 @@ async def render_view(key: str, store: Store, chat_id: int, user: User) -> str:
         case "me":
             return await render_me(store, chat_id, user)
         case "forfeits":
-            return views.forfeit_list(await store.forfeits(chat_id))
+            owed = await store.owed_forfeits(chat_id)
+            return views.forfeit_list(await store.forfeits(chat_id), owed, await store.players(chat_id))
         case "tiers":
             return "<b>Tier values</b>\n" + views.tier_legend()
     return await render_today(store, chat_id, today)
@@ -239,6 +253,16 @@ async def on_forfeit(msg: Message, command: CommandObject, store: Store) -> None
             return
         ok = await store.remove_forfeit(chat_id, fid)
         await msg.reply("🗑 Removed." if ok else "No forfeit with that number.")
+        return
+    if args.lower() in {"done", "paid"}:
+        if msg.from_user is None:
+            return
+        paid = await store.mark_forfeit_done(chat_id, msg.from_user.id)
+        if paid is None:
+            await msg.reply("You don't owe a forfeit. Lucky you.")
+        else:
+            name = views.escape(msg.from_user.full_name)
+            await msg.reply(f"✅ {name} has paid up: <i>{views.escape(paid.text)}</i>")
         return
     await send_board(msg, store, "forfeits")
 

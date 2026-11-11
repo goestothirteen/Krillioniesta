@@ -38,6 +38,15 @@ CREATE TABLE IF NOT EXISTS forfeits (
     added_by    INTEGER,
     used_week   TEXT
 );
+CREATE TABLE IF NOT EXISTS forfeit_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id     INTEGER NOT NULL,
+    week        TEXT NOT NULL,   -- the week's monday
+    user_id     INTEGER NOT NULL,
+    text        TEXT NOT NULL,
+    done_at     TEXT,
+    UNIQUE (chat_id, week, user_id)
+);
 CREATE TABLE IF NOT EXISTS board_msgs (
     chat_id     INTEGER PRIMARY KEY,
     message_id  INTEGER NOT NULL
@@ -65,6 +74,17 @@ class Result:
     score: int
     tiers: str
     posted_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class Owed:
+    """A forfeit handed to someone for a week."""
+
+    id: int
+    week: str
+    user_id: int
+    text: str
+    done: bool
 
 
 def _now() -> str:
@@ -217,6 +237,7 @@ class Store:
         """Wipe every result, forfeit and post marker for a chat. Players are kept."""
         cur = await self.db.execute("DELETE FROM results WHERE chat_id=?", (chat_id,))
         await self.db.execute("DELETE FROM forfeits WHERE chat_id=?", (chat_id,))
+        await self.db.execute("DELETE FROM forfeit_log WHERE chat_id=?", (chat_id,))
         await self.db.execute("DELETE FROM posted WHERE chat_id=?", (chat_id,))
         await self.db.commit()
         return cur.rowcount
@@ -265,6 +286,50 @@ class Store:
         await self.db.execute("UPDATE forfeits SET used_week=? WHERE id=?", (week_key, row["id"]))
         await self.db.commit()
         return row["text"]
+
+    # -- who got which forfeit ------------------------------------------------
+
+    async def assign_forfeit(self, chat_id: int, week: str, user_ids: list[int], text: str) -> None:
+        """Record the week's forfeit against everyone who finished last (ties share it)."""
+        await self.db.executemany(
+            "INSERT OR IGNORE INTO forfeit_log (chat_id, week, user_id, text) VALUES (?, ?, ?, ?)",
+            [(chat_id, week, u, text) for u in user_ids],
+        )
+        await self.db.commit()
+
+    async def week_forfeits(self, chat_id: int, week: str) -> list[Owed]:
+        cur = await self.db.execute(
+            "SELECT id, week, user_id, text, done_at FROM forfeit_log WHERE chat_id=? AND week=? ORDER BY id",
+            (chat_id, week),
+        )
+        return [self._owed(r) for r in await cur.fetchall()]
+
+    async def owed_forfeits(self, chat_id: int) -> list[Owed]:
+        """Forfeits nobody has ticked off yet, oldest first."""
+        cur = await self.db.execute(
+            "SELECT id, week, user_id, text, done_at FROM forfeit_log "
+            "WHERE chat_id=? AND done_at IS NULL ORDER BY week, id",
+            (chat_id,),
+        )
+        return [self._owed(r) for r in await cur.fetchall()]
+
+    async def mark_forfeit_done(self, chat_id: int, user_id: int) -> Owed | None:
+        """Tick off this person's oldest outstanding forfeit. None if they owe nothing."""
+        cur = await self.db.execute(
+            "SELECT id, week, user_id, text, done_at FROM forfeit_log "
+            "WHERE chat_id=? AND user_id=? AND done_at IS NULL ORDER BY week, id LIMIT 1",
+            (chat_id, user_id),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return None
+        await self.db.execute("UPDATE forfeit_log SET done_at=? WHERE id=?", (_now(), row["id"]))
+        await self.db.commit()
+        return Owed(row["id"], row["week"], row["user_id"], row["text"], True)
+
+    @staticmethod
+    def _owed(r: aiosqlite.Row) -> Owed:
+        return Owed(r["id"], r["week"], r["user_id"], r["text"], r["done_at"] is not None)
 
     # -- the one live board card per chat ----------------------------------------
 

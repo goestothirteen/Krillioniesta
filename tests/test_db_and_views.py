@@ -3,9 +3,10 @@ from datetime import date
 import pytest
 
 from krillionbot import views
-from krillionbot.db import Player, Store
+from krillionbot.db import Owed, Player, Store
+from krillionbot.handlers import close_week
 from krillionbot.parser import parse_share
-from krillionbot.stats import all_time, daily_board, weekly_board
+from krillionbot.stats import all_time, daily_board, week_losers, weekly_board
 
 
 @pytest.fixture
@@ -85,18 +86,60 @@ async def test_views_render(store: Store):
     ranked = daily_board(rs)
 
     today = views.today_board(118, rs, ranked, players, waiting=[], live=True)
-    assert "🥇 Mark &lt;3 — <b>415</b>" in today and "Tue 10 Nov" in today
+    assert "🥇 Mark &lt;3  <b>415</b>" in today and "Tue 10 Nov" in today
+    assert "<blockquote expandable>" in today and "🦑🦑🦑🏮🦑🦑🐟  Mark &lt;3" in today
 
     wrap = views.daily_wrap(118, rs, ranked, players)
     assert "Diver of the day: Mark &lt;3" in wrap and "Plankton of the day: Zoey" in wrap
 
-    week = views.weekly_board(date(2026, 11, 9), weekly_board(rs, [117, 118, 119, 120, 121, 122, 123]),
-                              players, dives_done=2, final=True, forfeit="Sing a song")
-    assert "Week winner: Mark &lt;3" in week and "Sing a song" in week and 'tg://user?id=2' in week
+    rows = weekly_board(rs, [117, 118, 119, 120, 121, 122, 123])
+    monday = date(2026, 11, 9)
+    owed = [Owed(1, "2026-11-09", 2, "Sing a song", False)]
+    week = views.weekly_board(monday, rows, players, dives_done=2, final=True, owed=owed)
+    assert "Week winner: Mark &lt;3" in week and "Sing a song</b> ⏳ still owed" in week
+    assert 'tg://user?id=2' in week and "1/7 dives" in week
+    # Looking back at a week with nothing recorded never claims the jar is empty…
+    assert "jar" not in views.weekly_board(monday, rows, players, 2, final=True)
+    # …only the Sunday post itself does.
+    assert "No forfeits in the jar" in views.weekly_board(monday, rows, players, 2, final=True, announce=True)
+    assert "Forfeit zone: Zoey" in views.weekly_board(monday, rows, players, 2, final=False)
 
     at = views.alltime_board(all_time(rs, 118), players, 1)
-    assert "avg <b>415</b>" in at
+    assert "🥇 Mark &lt;3  <b>415</b>" in at and "1 dives · total 415" in at
 
     res = parse_share("Krillion #118 🦐\n415\n\n🦑🦑🦑🏮🦑🦑🐟")
     assert views.ack_lines("Mark", res, prev_best=400) == ["📈 New personal best (was 400)."]
     assert views.me_card(None, "Mark", []).startswith("<b>Mark</b>")
+
+
+async def test_week_close_records_forfeit_for_everyone_tied_last(store: Store):
+    week = [117, 118, 119, 120, 121, 122, 123]  # Mon 9 – Sun 15 Nov 2026
+    for uid, name in [(1, "Mark"), (2, "Zoey"), (3, "Alvin")]:
+        await store.upsert_player(-1, Player(uid, name, None))
+    for uid, score in [(1, 500), (2, 300), (3, 300)]:
+        await store.add_result(-1, uid, 118, score, "🦑🦑🦑🦑🦑🦑🦑")
+    await store.add_forfeit(-1, "Buy bubble tea", 1)
+    assert week_losers(weekly_board(await store.all_results(-1), week)) == [2, 3]
+
+    monday = date(2026, 11, 9)
+    text = await close_week(store, -1, monday)
+    assert "Lowest combined" in text and "Zoey" in text and "Alvin" in text and "Buy bubble tea" in text
+    assert [o.user_id for o in await store.owed_forfeits(-1)] == [2, 3]
+    await close_week(store, -1, monday)  # running it twice never draws a second forfeit
+    assert len(await store.week_forfeits(-1, "2026-11-09")) == 2
+
+    paid = await store.mark_forfeit_done(-1, 2)
+    assert paid and paid.text == "Buy bubble tea"
+    assert await store.mark_forfeit_done(-1, 2) is None
+    assert await store.mark_forfeit_done(-1, 1) is None  # the winner owes nothing
+    assert [o.user_id for o in await store.owed_forfeits(-1)] == [3]
+    jar = views.forfeit_list(await store.forfeits(-1), await store.owed_forfeits(-1), await store.players(-1))
+    assert "Still owed" in jar and "Alvin — Buy bubble tea" in jar and "Zoey —" not in jar
+
+
+def test_week_losers_needs_a_real_last_place():
+    from krillionbot.stats import WeekRow
+
+    assert week_losers([WeekRow(1, total=400)]) == []
+    assert week_losers([WeekRow(1, total=400), WeekRow(2, total=400)]) == []  # dead level
+    assert week_losers([WeekRow(1, total=400), WeekRow(2, total=100)]) == [2]

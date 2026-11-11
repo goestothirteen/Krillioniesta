@@ -25,7 +25,11 @@ against the score, so an edited paste is rejected. Unlimited results
   of the day.
 - Sunday's wrap also closes the week: winner, lowest combined, and a forfeit
   drawn from the jar (`/forfeit add …`). Missed days count as 0; only people
-  who dived at least once that week are ranked.
+  who dived at least once that week are ranked. The forfeit is recorded against
+  whoever finished last (a tie shares it) and stays on the "still owed" list
+  until they send `/forfeit done`.
+- Boards show just place, name and score; the extra stats and emoji strips sit
+  in a fold-out block underneath.
 - Evening nudge (21:00 SGT) tagging anyone active in the last 7 dives who
   hasn't posted today's.
 - `/today` `/yesterday` `/week` `/week last` `/alltime` `/me` `/forfeit` `/tiers` `/help`

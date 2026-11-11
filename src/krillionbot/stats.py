@@ -68,6 +68,16 @@ def weekly_board(results: list[Result], dives: list[int]) -> list[WeekRow]:
     return sorted(rows.values(), key=lambda w: (-w.total, -w.played, w.user_id))
 
 
+def week_losers(rows: list[WeekRow]) -> list[int]:
+    """Everyone tied on the lowest weekly total. Empty when alone or when the whole table is level."""
+    if len(rows) < 2:
+        return []
+    low = min(w.total for w in rows)
+    if low == max(w.total for w in rows):
+        return []
+    return [w.user_id for w in rows if w.total == low]
+
+
 @dataclass(slots=True)
 class AllTime:
     user_id: int

@@ -5,10 +5,10 @@ from __future__ import annotations
 from datetime import date, timedelta
 from html import escape
 
-from .db import Player, Result
+from .db import Owed, Player, Result
 from .dives import dive_date, fmt_date
 from .parser import MAX_SCORE, TIERS, ShareResult
-from .stats import AllTime, Ranked, WeekRow
+from .stats import AllTime, Ranked, WeekRow, rank, week_losers
 
 MEDALS = {1: "🥇", 2: "🥈", 3: "🥉"}
 
@@ -53,32 +53,49 @@ def ack_lines(name: str, res: ShareResult, prev_best: int | None) -> list[str]:
     return lines
 
 
+def _details(title: str, lines: list[str]) -> str:
+    """The small print, folded away under the standings (tap to expand)."""
+    return f"<blockquote expandable><b>{title}</b>\n" + "\n".join(lines) + "</blockquote>"
+
+
+def _and(names: list[str]) -> str:
+    return " & ".join(names)
+
+
+def _dive_lines(results: list[Result], ranked: list[Ranked], players: dict[int, Player]) -> list[str]:
+    by_user = {r.user_id: r for r in results}
+    return [f"{_place(r)} {name_of(players, r.user_id)}  <b>{by_user[r.user_id].score}</b>" for r in ranked]
+
+
+def _strips(results: list[Result], ranked: list[Ranked], players: dict[int, Player]) -> str:
+    """Emoji strip first: the strips are all the same width, so the names line up."""
+    by_user = {r.user_id: r for r in results}
+    return _details("Answer by answer",
+                    [f"{by_user[r.user_id].tiers}  {name_of(players, r.user_id)}" for r in ranked])
+
+
 def today_board(dive: int, results: list[Result], ranked: list[Ranked], players: dict[int, Player],
                 waiting: list[int], live: bool) -> str:
     d = dive_date(dive)
     title = f"🦐 <b>Dive #{dive} · {fmt_date(d)}</b>"
     if live:
         title += " <i>(so far)</i>"
-    by_user = {r.user_id: r for r in results}
-    lines = [title]
-    for r in ranked:
-        res = by_user[r.user_id]
-        lines.append(f"{_place(r)} {name_of(players, r.user_id)} — <b>{res.score}</b>  {res.tiers}")
+    lines = [title, ""]
     if not ranked:
         lines.append("<i>No dives logged yet.</i>")
+    lines += _dive_lines(results, ranked, players)
     if waiting:
         lines.append("")
         lines.append("⏳ Still to dive: " + ", ".join(name_of(players, u) for u in waiting))
+    if ranked:
+        lines.append(_strips(results, ranked, players))
     return "\n".join(lines)
 
 
 def daily_wrap(dive: int, results: list[Result], ranked: list[Ranked], players: dict[int, Player]) -> str:
     d = dive_date(dive)
-    lines = [f"🌙 <b>Dive #{dive} wrap · {fmt_date(d)}</b>"]
-    by_user = {r.user_id: r for r in results}
-    for r in ranked:
-        res = by_user[r.user_id]
-        lines.append(f"{_place(r)} {name_of(players, r.user_id)} — <b>{res.score}</b>  {res.tiers}")
+    lines = [f"🌙 <b>Dive #{dive} wrap · {fmt_date(d)}</b>", ""]
+    lines += _dive_lines(results, ranked, players)
     if len(ranked) >= 2:
         top = [r for r in ranked if r.rank == 1]
         bottom_score = ranked[-1].score
@@ -87,12 +104,11 @@ def daily_wrap(dive: int, results: list[Result], ranked: list[Ranked], players: 
         if len(top) == 1:
             lines.append(f"👑 Diver of the day: {name_of(players, top[0].user_id)}")
         else:
-            lines.append("👑 Shared top spot: " + " & ".join(name_of(players, t.user_id) for t in top))
+            lines.append("👑 Shared top spot: " + _and([name_of(players, t.user_id) for t in top]))
         if bottom_score != ranked[0].score:
-            lines.append("🫧 Plankton of the day: " + " & ".join(name_of(players, b.user_id) for b in bottom))
-    gems = [(r.user_id, r.tiers.count("🌟")) for r in results if "🌟" in r.tiers]
-    if gems:
-        lines.append("🌟 Gems: " + ", ".join(f"{name_of(players, u)} ×{n}" for u, n in gems))
+            lines.append("🫧 Plankton of the day: " + _and([name_of(players, b.user_id) for b in bottom]))
+    if ranked:
+        lines.append(_strips(results, ranked, players))
     return "\n".join(lines)
 
 
@@ -100,54 +116,67 @@ def daily_wrap(dive: int, results: list[Result], ranked: list[Ranked], players: 
 
 
 def weekly_board(monday: date, rows: list[WeekRow], players: dict[int, Player], dives_done: int,
-                 final: bool, forfeit: str | None = None) -> str:
+                 final: bool, owed: list[Owed] | None = None, announce: bool = False) -> str:
+    """``owed`` is the forfeit recorded for this week (one entry per person who finished last).
+
+    ``announce`` is the Sunday post itself: only then do we complain about an empty jar.
+    """
     sunday = monday + timedelta(days=6)
     head = f"📅 <b>Week {fmt_date(monday)} – {fmt_date(sunday)}</b>"
     if not final:
         head += f" <i>({dives_done} of 7 dives in)</i>"
-    lines = [head]
+    lines = [head, ""]
     if not rows:
         lines.append("<i>Nobody has dived this week yet.</i>")
         return "\n".join(lines)
-    ranked = {r.user_id: r for r in _rank_rows([(w.user_id, w.total) for w in rows])}
+    ranked = {r.user_id: r for r in rank([(w.user_id, w.total) for w in rows])}
+    details = []
     for w in rows:
-        r = ranked[w.user_id]
+        lines.append(f"{_place(ranked[w.user_id])} {name_of(players, w.user_id)}  <b>{_n(w.total)}</b>")
         extras = f"{w.played}/7 dives · avg {_n(w.average)} · best {w.best}"
         if w.gems:
             extras += f" · 🌟{w.gems}"
         if w.clowns:
             extras += f" · 🤡{w.clowns}"
-        lines.append(f"{_place(r)} {name_of(players, w.user_id)} — <b>{_n(w.total)}</b>")
-        lines.append(f"      <i>{extras}</i>")
+        details.append(f"{name_of(players, w.user_id)} — {extras}")
+
+    owed = owed or []
+    losers = [o.user_id for o in owed] or week_losers(rows)
     if len(rows) >= 2:
         lines.append("")
-        loser = rows[-1]
         if final:
-            lines.append(f"🏆 Week winner: {name_of(players, rows[0].user_id)}")
-            lines.append(f"💀 Lowest combined: {mention(players, loser.user_id)}")
-            if forfeit:
-                lines.append(f"🎲 Forfeit: <b>{escape(forfeit)}</b>")
+            winners = [w.user_id for w in rows if w.total == rows[0].total]
+            lines.append("🏆 Week winner: " + _and([name_of(players, u) for u in winners]))
+            if losers:
+                lines.append("💀 Lowest combined: " + _and([mention(players, u) for u in losers]))
             else:
+                lines.append("🤝 Dead level at the bottom — nobody takes the forfeit.")
+            if owed:
+                left = [o.user_id for o in owed if not o.done]
+                if not left:
+                    status = " ✅ done"
+                elif len(owed) > 1:
+                    status = " ⏳ still owed by " + _and([name_of(players, u) for u in left])
+                else:
+                    status = " ⏳ still owed"
+                lines.append(f"🎲 Forfeit: <b>{escape(owed[0].text)}</b>{status}")
+            elif announce and losers:
                 lines.append("🎲 No forfeits in the jar — add some with /forfeit add …")
-        else:
-            lines.append(f"💀 Currently in the forfeit zone: {name_of(players, loser.user_id)}")
+        elif losers:
+            lines.append("💀 Forfeit zone: " + _and([name_of(players, u) for u in losers]))
+    lines.append(_details("The small print", details))
     return "\n".join(lines)
-
-
-def _rank_rows(scores: list[tuple[int, int]]) -> list[Ranked]:
-    from .stats import rank
-
-    return rank(scores)
 
 
 # -- all time ------------------------------------------------------------------
 
 
 def alltime_board(rows: list[AllTime], players: dict[int, Player], total_dives_logged: int) -> str:
-    lines = [f"🏆 <b>All-time · {total_dives_logged} dives logged</b>"]
+    lines = [f"🏆 <b>All-time · average per dive</b> <i>({total_dives_logged} dives logged)</i>", ""]
     if not rows:
         lines.append("<i>Nothing logged yet. Paste a Krillion result to start.</i>")
         return "\n".join(lines)
+    details = []
     for i, a in enumerate(rows, start=1):
         place = MEDALS.get(i, f"{i}.")
         bits = [f"{a.dives} dives", f"total {_n(a.total)}", f"best {a.best}"]
@@ -159,10 +188,10 @@ def alltime_board(rows: list[AllTime], players: dict[int, Player], total_dives_l
             bits.append(f"🤡{a.clowns}")
         if a.current_streak >= 2:
             bits.append(f"🔥{a.current_streak}")
-        lines.append(f"{place} {name_of(players, a.user_id)} — avg <b>{_n(a.average)}</b>")
-        lines.append(f"      <i>{' · '.join(bits)}</i>")
-    lines.append("")
-    lines.append("<i>Ranked by average. 👑 daily wins · 🌟 gems · 🤡 Too Clevers · 🔥 current streak</i>")
+        lines.append(f"{place} {name_of(players, a.user_id)}  <b>{_n(a.average)}</b>")
+        details.append(f"{name_of(players, a.user_id)} — {' · '.join(bits)}")
+    details.append("<i>👑 daily wins · 🌟 gems · 🤡 Too Clevers · 🔥 current streak</i>")
+    lines.append(_details("The small print", details))
     return "\n".join(lines)
 
 
@@ -182,15 +211,24 @@ def me_card(a: AllTime | None, name: str, recent: list[Result]) -> str:
     return "\n".join(lines)
 
 
-def forfeit_list(items: list[tuple[int, str, str | None]]) -> str:
-    if not items:
-        return "🎲 The forfeit jar is empty. Add one with:\n/forfeit add Buy everyone bubble tea"
-    lines = ["🎲 <b>Forfeit jar</b>"]
-    for fid, text, used in items:
-        flag = " <i>(used)</i>" if used else ""
-        lines.append(f"{fid}. {escape(text)}{flag}")
+def forfeit_list(items: list[tuple[int, str, str | None]], owed: list[Owed] | None = None,
+                 players: dict[int, Player] | None = None) -> str:
+    lines: list[str] = []
+    if items:
+        lines.append("🎲 <b>Forfeit jar</b>")
+        for fid, text, used in items:
+            flag = " <i>(used)</i>" if used else ""
+            lines.append(f"{fid}. {escape(text)}{flag}")
+    else:
+        lines.append("🎲 The forfeit jar is empty. Add one with:\n/forfeit add Buy everyone bubble tea")
+    if owed:
+        lines.append("")
+        lines.append("⏳ <b>Still owed</b>")
+        for o in owed:
+            week = fmt_date(date.fromisoformat(o.week))
+            lines.append(f"{name_of(players or {}, o.user_id)} — {escape(o.text)} <i>(week of {week})</i>")
     lines.append("")
-    lines.append("<i>/forfeit add … to add · /forfeit remove N to drop one</i>")
+    lines.append("<i>/forfeit add … · /forfeit remove N · /forfeit done once you've paid up</i>")
     return "\n".join(lines)
 
 
@@ -206,7 +244,8 @@ HELP = (
     "/week — this week's board (Mon–Sun). /week last for last week\n"
     "/alltime — lifetime table\n"
     "/me — your own stats\n"
-    "/forfeit — the forfeit jar (add / remove). Lowest weekly total draws one.\n"
+    "/forfeit — the forfeit jar (add / remove). Lowest weekly total draws one; "
+    "/forfeit done ticks yours off.\n"
     "/undo — remove your own last paste if it was wrong\n"
     "/clear — admins: clear a dive, or everything\n"
     "/tiers — what each emoji is worth\n\n"

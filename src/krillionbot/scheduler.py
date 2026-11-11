@@ -14,7 +14,7 @@ from . import views
 from .config import Settings
 from .db import Store
 from .dives import NY, SG, current_dive, dive_date, week_of_dive
-from .handlers import active_players, render_week
+from .handlers import active_players, close_week
 from .stats import daily_board
 
 log = logging.getLogger(__name__)
@@ -43,9 +43,7 @@ async def wrap_dive(bot: Bot, store: Store, chat_id: int, dive: int) -> None:
         monday = week_of_dive(dive)
         key = monday.isoformat()
         if await store.mark_posted(chat_id, "weekly", key):
-            forfeit = await store.draw_forfeit(chat_id, key)
-            text = await render_week(store, chat_id, monday, final=True, forfeit=forfeit)
-            await _send(bot, store, chat_id, text)
+            await _send(bot, store, chat_id, await close_week(store, chat_id, monday))
 
 
 async def daily_job(bot: Bot, store: Store) -> None:
