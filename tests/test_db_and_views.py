@@ -108,6 +108,9 @@ async def test_views_render(store: Store):
 
     at = views.alltime_board(all_time(rs, 118), players, 1)
     assert "🥇 Mark &lt;3  <b>415</b>" in at and "1 dives · total 415" in at
+    tally = "🌟 0  🏮 1  🦑 5  🐟 1  🤡 0  🫧 0  ⬛ 0"  # dive 118 strip: 🦑🦑🦑🏮🦑🦑🐟
+    assert f"      {tally}" in at
+    assert tally in views.me_card(all_time(rs, 118)[0], "Mark", rs)
 
     res = parse_share("Krillion #118 🦐\n415\n\n🦑🦑🦑🏮🦑🦑🐟")
     assert views.ack_lines("Mark", res, prev_best=400) == ["📈 New personal best (was 400)."]

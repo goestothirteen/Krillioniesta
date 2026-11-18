@@ -47,6 +47,9 @@ def test_all_time_sorted_by_average_with_wins_and_gems():
     assert (a1.total, a1.dives, a1.best, a1.best_dive, a1.worst) == (800, 2, 500, 118, 300)
     assert (a1.gems, a1.clowns, a1.wins) == (5, 1, 1)
     assert rows[1].wins == 1  # won dive 117
+    # every tier is tallied, best first: 7 Rare from dive 117 plus the dive 118 strip
+    assert a1.tiers == {"🌟": 5, "🏮": 0, "🦑": 7, "🐟": 0, "🤡": 1, "🫧": 1, "⬛": 0}
+    assert list(a1.tiers) == ["🌟", "🏮", "🦑", "🐟", "🤡", "🫧", "⬛"]
 
 
 def test_personal_best_before():

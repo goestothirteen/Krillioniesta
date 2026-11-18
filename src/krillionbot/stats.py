@@ -6,7 +6,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 from .db import Result
-from .parser import CLOWN, GEM, MISS
+from .parser import CLOWN, GEM, MISS, TIER_ORDER
 
 
 @dataclass(slots=True)
@@ -89,6 +89,7 @@ class AllTime:
     gems: int = 0
     clowns: int = 0
     misses: int = 0
+    tiers: dict[str, int] = field(default_factory=lambda: dict.fromkeys(TIER_ORDER, 0))  # every glyph
     current_streak: int = 0
     longest_streak: int = 0
     wins: int = 0  # daily wins (shared wins count)
@@ -126,6 +127,8 @@ def all_time(results: list[Result], current_dive: int) -> list[AllTime]:
             a.gems += r.tiers.count(GEM)
             a.clowns += r.tiers.count(CLOWN)
             a.misses += r.tiers.count(MISS)
+            for g in TIER_ORDER:
+                a.tiers[g] += r.tiers.count(g)
         a.current_streak, a.longest_streak = streaks([r.dive for r in rs], current_dive)
         a.wins = wins[uid]
         out.append(a)

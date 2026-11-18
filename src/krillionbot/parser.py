@@ -27,6 +27,8 @@ TIERS: dict[str, tuple[str, int]] = {
     "🌟": ("One in a Krillion", 100),
     "⬛": ("Miss", 0),
 }
+# Glyphs from most to fewest points — the order tallies are shown in.
+TIER_ORDER: tuple[str, ...] = tuple(sorted(TIERS, key=lambda g: -TIERS[g][1]))
 GEM = "🌟"
 CLOWN = "🤡"
 MISS = "⬛"

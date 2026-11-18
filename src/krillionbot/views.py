@@ -7,7 +7,7 @@ from html import escape
 
 from .db import Owed, Player, Result
 from .dives import dive_date, fmt_date
-from .parser import MAX_SCORE, TIERS, ShareResult
+from .parser import MAX_SCORE, TIER_ORDER, TIERS, ShareResult
 from .stats import AllTime, Ranked, WeekRow, rank, week_losers
 
 MEDALS = {1: "🥇", 2: "🥈", 3: "🥉"}
@@ -190,17 +190,19 @@ def alltime_board(rows: list[AllTime], players: dict[int, Player], total_dives_l
         bits = [f"{a.dives} dives", f"total {_n(a.total)}", f"best {a.best}"]
         if a.wins:
             bits.append(f"👑{a.wins}")
-        if a.gems:
-            bits.append(f"🌟{a.gems}")
-        if a.clowns:
-            bits.append(f"🤡{a.clowns}")
         if a.current_streak >= 2:
             bits.append(f"🔥{a.current_streak}")
         lines.append(f"{place} {name_of(players, a.user_id)}  <b>{_n(a.average)}</b>")
         lines.append(f"      <i>{' · '.join(bits)}</i>")
+        lines.append(f"      {_tier_tally(a)}")
     lines.append("")
-    lines.append("<i>👑 daily wins · 🌟 gems · 🤡 Too Clevers · 🔥 current streak</i>")
+    lines.append("<i>👑 daily wins · 🔥 current streak · emoji row = how many of each answer</i>")
     return "\n".join(lines)
+
+
+def _tier_tally(a: AllTime) -> str:
+    """How many of each answer, best tier first. Zeros stay in so every row lines up."""
+    return "  ".join(f"{g} {a.tiers.get(g, 0)}" for g in TIER_ORDER)
 
 
 def me_card(a: AllTime | None, name: str, recent: list[Result]) -> str:
@@ -210,8 +212,11 @@ def me_card(a: AllTime | None, name: str, recent: list[Result]) -> str:
         f"🤿 <b>{escape(name)}</b>",
         f"Average <b>{_n(a.average)}</b> over {a.dives} dives · total {_n(a.total)}",
         f"Best {a.best} (dive #{a.best_dive}) · worst {a.worst}",
-        f"👑 {a.wins} daily wins · 🌟 {a.gems} gems · 🤡 {a.clowns} · ⬛ {a.misses}",
+        f"👑 {a.wins} daily wins",
         f"🔥 Streak {a.current_streak} (longest {a.longest_streak})",
+        "",
+        "Answers:",
+        _tier_tally(a),
     ]
     if recent:
         lines.append("")
