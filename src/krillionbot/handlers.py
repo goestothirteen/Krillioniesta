@@ -15,7 +15,15 @@ from .db import Player, Store
 from .dives import current_dive, dive_date, fmt_date, week_dives, week_of_dive, week_start
 from .keyboards import board_views, confirm
 from .parser import ParseError, looks_like_result, parse_share
-from .stats import all_time, daily_board, personal_best_before, week_losers, weekly_board
+from .stats import (
+    all_time,
+    daily_board,
+    personal_best_before,
+    week_flops,
+    week_losers,
+    weekly_board,
+    worst_dives,
+)
 
 log = logging.getLogger(__name__)
 router = Router(name="krillion")
@@ -59,7 +67,8 @@ async def render_week(store: Store, chat_id: int, monday, final: bool, announce:
     today = current_dive()
     dives_done = sum(1 for d in dives if d <= today)
     owed = await store.week_forfeits(chat_id, monday.isoformat()) if final else []
-    return views.weekly_board(monday, rows, players, dives_done, final, owed, announce)
+    flops = week_flops(results, dives) if final else []
+    return views.weekly_board(monday, rows, players, dives_done, final, owed, announce, flops)
 
 
 async def close_week(store: Store, chat_id: int, monday) -> str:
@@ -108,6 +117,9 @@ async def render_view(key: str, store: Store, chat_id: int, user: User) -> str:
         case "forfeits":
             owed = await store.owed_forfeits(chat_id)
             return views.forfeit_list(await store.forfeits(chat_id), owed, await store.players(chat_id))
+        case "flops":
+            worst = worst_dives(await store.all_results(chat_id))
+            return views.flops_board(worst, await store.players(chat_id))
         case "tiers":
             return "<b>Tier values</b>\n" + views.tier_legend()
     return await render_today(store, chat_id, today)
@@ -234,6 +246,11 @@ async def on_week(msg: Message, command: CommandObject, store: Store) -> None:
 @router.message(Command("alltime", "all", "season"))
 async def on_alltime(msg: Message, store: Store) -> None:
     await send_board(msg, store, "alltime")
+
+
+@router.message(Command("flops", "flop", "shame"))
+async def on_flops(msg: Message, store: Store) -> None:
+    await send_board(msg, store, "flops")
 
 
 @router.message(Command("me"))

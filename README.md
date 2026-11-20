@@ -28,6 +28,11 @@ against the score, so an edited paste is rejected. Unlimited results
   who dived at least once that week are ranked. The forfeit is recorded against
   whoever finished last (a tie shares it) and stays on the "still owed" list
   until they send `/forfeit done`.
+- The Sunday post also names the Flop of the Week: the lowest single dive of
+  the week (ties share it; missed days don't count). `/flops` and the Flops
+  button show the 5 worst dives ever.
+- `/alltime` and `/me` show each answer tier as a count and a share of all
+  answers.
 - Boards put each person's score on one line and their stats (or emoji strip)
   on the next, with a blank line between people.
 - After the wrap it posts the dive question by question: each prompt with
@@ -36,7 +41,7 @@ against the score, so an edited paste is rejected. Unlimited results
   that is still open. `/questions` shows the last closed dive.
 - Evening nudge (21:00 SGT) tagging anyone active in the last 7 dives who
   hasn't posted today's.
-- `/today` `/yesterday` `/week` `/week last` `/alltime` `/me` `/forfeit` `/tiers` `/help`
+- `/today` `/yesterday` `/week` `/week last` `/alltime` `/flops` `/me` `/forfeit` `/tiers` `/help`
 
 Dive #1 was 16 July 2026, so the dive number maps to a date regardless of when
 someone pastes — late entries land on the right day.

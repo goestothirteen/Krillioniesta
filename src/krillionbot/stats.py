@@ -78,6 +78,24 @@ def week_losers(rows: list[WeekRow]) -> list[int]:
     return [w.user_id for w in rows if w.total == low]
 
 
+def week_flops(results: list[Result], dives: list[int]) -> list[Result]:
+    """The lowest single dive of the week (ties share it). Missed days don't count — you have to
+    have actually dived to flop. Empty with fewer than two dives or when every score is level."""
+    dive_set = set(dives)
+    week = [r for r in results if r.dive in dive_set]
+    if len(week) < 2:
+        return []
+    low = min(r.score for r in week)
+    if low == max(r.score for r in week):
+        return []
+    return sorted((r for r in week if r.score == low), key=lambda r: (r.dive, r.user_id))
+
+
+def worst_dives(results: list[Result], n: int = 5) -> list[Result]:
+    """The ``n`` lowest single-dive scores ever, worst first; the older dive wins a tie."""
+    return sorted(results, key=lambda r: (r.score, r.dive, r.user_id))[:n]
+
+
 @dataclass(slots=True)
 class AllTime:
     user_id: int

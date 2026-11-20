@@ -6,7 +6,7 @@ from krillionbot import views
 from krillionbot.db import Owed, Player, Store
 from krillionbot.handlers import close_week
 from krillionbot.parser import parse_share
-from krillionbot.stats import all_time, daily_board, week_losers, weekly_board
+from krillionbot.stats import all_time, daily_board, week_flops, week_losers, weekly_board, worst_dives
 
 
 @pytest.fixture
@@ -108,9 +108,24 @@ async def test_views_render(store: Store):
 
     at = views.alltime_board(all_time(rs, 118), players, 1)
     assert "🥇 Mark &lt;3  <b>415</b>" in at and "1 dives · total 415" in at
-    tally = "🌟 0  🏮 1  🦑 5  🐟 1  🤡 0  🫧 0  ⬛ 0"  # dive 118 strip: 🦑🦑🦑🏮🦑🦑🐟
-    assert f"      {tally}" in at
-    assert tally in views.me_card(all_time(rs, 118)[0], "Mark", rs)
+    # dive 118 strip: 🦑🦑🦑🏮🦑🦑🐟 — count and share of the 7 answers, over two rows
+    tally = "🌟 0 (0%)   🏮 1 (14%)   🦑 5 (71%)   🐟 1 (14%)\n{pad}🤡 0 (0%)   🫧 0 (0%)   ⬛ 0 (0%)"
+    assert "      " + tally.format(pad="      ") in at
+    assert tally.format(pad="") in views.me_card(all_time(rs, 118)[0], "Mark", rs)
+
+    # Flop of the week: only on a finished week, and only when handed one.
+    flop = week_flops(rs, [117, 118, 119, 120, 121, 122, 123])
+    assert [f.user_id for f in flop] == [2]
+    final = views.weekly_board(monday, rows, players, 7, final=True, flops=flop)
+    assert "🤦 <b>Flop of the week</b>\nZoey  <b>355</b>  <i>dive #118 · Tue 10 Nov</i>\n" in final
+    assert final.endswith("      🦑🐟🐟🏮🦑🦑🐟")
+    assert "Flop" not in views.weekly_board(monday, rows, players, 2, final=False, flops=flop)
+    assert "Flop" not in week
+
+    shame = views.flops_board(worst_dives(rs), players)
+    assert "2 worst dives ever" in shame
+    assert shame.index("1. Zoey  <b>355</b>") < shame.index("2. Mark &lt;3  <b>415</b>")
+    assert "Nothing logged yet" in views.flops_board([], players)
 
     res = parse_share("Krillion #118 🦐\n415\n\n🦑🦑🦑🏮🦑🦑🐟")
     assert views.ack_lines("Mark", res, prev_best=400) == ["📈 New personal best (was 400)."]

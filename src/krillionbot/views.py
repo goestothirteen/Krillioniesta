@@ -128,10 +128,12 @@ def questions_board(dive: int, results: list[Result], ranked: list[Ranked], play
 
 
 def weekly_board(monday: date, rows: list[WeekRow], players: dict[int, Player], dives_done: int,
-                 final: bool, owed: list[Owed] | None = None, announce: bool = False) -> str:
+                 final: bool, owed: list[Owed] | None = None, announce: bool = False,
+                 flops: list[Result] | None = None) -> str:
     """``owed`` is the forfeit recorded for this week (one entry per person who finished last).
 
     ``announce`` is the Sunday post itself: only then do we complain about an empty jar.
+    ``flops`` is the week's lowest single dive (ties share it); shown once the week is final.
     """
     sunday = monday + timedelta(days=6)
     head = f"📅 <b>Week {fmt_date(monday)} – {fmt_date(sunday)}</b>"
@@ -172,6 +174,28 @@ def weekly_board(monday: date, rows: list[WeekRow], players: dict[int, Player], 
                 lines.append("🎲 No forfeits in the jar — add some with /forfeit add …")
         elif losers:
             lines.append("💀 Forfeit zone: " + _and([name_of(players, u) for u in losers]))
+    if final and flops:
+        lines.append("")
+        lines.append("🤦 <b>Flop of the week</b>")
+        for f in flops:
+            lines.append(f"{name_of(players, f.user_id)}  <b>{f.score}</b>  "
+                         f"<i>dive #{f.dive} · {fmt_date(dive_date(f.dive))}</i>")
+            lines.append(f"      {f.tiers}")
+    return "\n".join(lines)
+
+
+def flops_board(worst: list[Result], players: dict[int, Player]) -> str:
+    """Hall of shame: the lowest single dives ever logged in this chat."""
+    lines = [f"🤦 <b>Hall of Shame · {len(worst) or 5} worst dives ever</b>", ""]
+    if not worst:
+        lines.append("<i>Nothing logged yet. Nobody has embarrassed themselves. Yet.</i>")
+        return "\n".join(lines)
+    for i, r in enumerate(worst, start=1):
+        if i > 1:
+            lines.append("")
+        lines.append(f"{i}. {name_of(players, r.user_id)}  <b>{r.score}</b>")
+        lines.append(f"      {r.tiers}")
+        lines.append(f"      <i>dive #{r.dive} · {fmt_date(dive_date(r.dive))}</i>")
     return "\n".join(lines)
 
 
@@ -194,15 +218,25 @@ def alltime_board(rows: list[AllTime], players: dict[int, Player], total_dives_l
             bits.append(f"🔥{a.current_streak}")
         lines.append(f"{place} {name_of(players, a.user_id)}  <b>{_n(a.average)}</b>")
         lines.append(f"      <i>{' · '.join(bits)}</i>")
-        lines.append(f"      {_tier_tally(a)}")
+        lines += [f"      {row}" for row in _tier_tally(a)]
     lines.append("")
-    lines.append("<i>👑 daily wins · 🔥 current streak · emoji row = how many of each answer</i>")
+    lines.append("<i>👑 daily wins · 🔥 current streak · emoji rows = how many of each answer, "
+                 "and its share of all answers</i>")
     return "\n".join(lines)
 
 
-def _tier_tally(a: AllTime) -> str:
-    """How many of each answer, best tier first. Zeros stay in so every row lines up."""
-    return "  ".join(f"{g} {a.tiers.get(g, 0)}" for g in TIER_ORDER)
+TALLY_PER_ROW = 4  # count + percent for all seven tiers is too wide for one phone line
+
+
+def _tier_tally(a: AllTime) -> list[str]:
+    """Count and share of each answer, best tier first. Zeros stay in so every row lines up."""
+    answers = sum(a.tiers.values())
+    cells = []
+    for g in TIER_ORDER:
+        n = a.tiers.get(g, 0)
+        pct = round(100 * n / answers) if answers else 0
+        cells.append(f"{g} {n} ({pct}%)")
+    return ["   ".join(cells[i:i + TALLY_PER_ROW]) for i in range(0, len(cells), TALLY_PER_ROW)]
 
 
 def me_card(a: AllTime | None, name: str, recent: list[Result]) -> str:
@@ -216,7 +250,7 @@ def me_card(a: AllTime | None, name: str, recent: list[Result]) -> str:
         f"🔥 Streak {a.current_streak} (longest {a.longest_streak})",
         "",
         "Answers:",
-        _tier_tally(a),
+        *_tier_tally(a),
     ]
     if recent:
         lines.append("")
@@ -257,6 +291,7 @@ HELP = (
     "/week — this week's board (Mon–Sun). /week last for last week\n"
     "/questions — the last finished dive, question by question (only after it closes — no spoilers)\n"
     "/alltime — lifetime table\n"
+    "/flops — hall of shame: the 5 worst dives ever\n"
     "/me — your own stats\n"
     "/forfeit — the forfeit jar (add / remove). Lowest weekly total draws one; "
     "/forfeit done ticks yours off.\n"
@@ -264,6 +299,7 @@ HELP = (
     "/clear — admins: clear a dive, or everything\n"
     "/tiers — what each emoji is worth\n\n"
     "Every board has buttons underneath — tap to switch views without posting again.\n"
-    "Every night before the next dive opens I post the day's wrap, and on Sundays the week's result. "
+    "Every night before the next dive opens I post the day's wrap, and on Sundays the week's result, "
+    "forfeit and Flop of the Week. "
     "I'll nudge whoever hasn't dived yet in the evening."
 )

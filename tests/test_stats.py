@@ -1,7 +1,16 @@
 from datetime import UTC, datetime
 
 from krillionbot.db import Result
-from krillionbot.stats import all_time, daily_board, personal_best_before, rank, streaks, weekly_board
+from krillionbot.stats import (
+    all_time,
+    daily_board,
+    personal_best_before,
+    rank,
+    streaks,
+    week_flops,
+    weekly_board,
+    worst_dives,
+)
 
 T = datetime(2026, 11, 10, tzinfo=UTC)
 
@@ -50,6 +59,18 @@ def test_all_time_sorted_by_average_with_wins_and_gems():
     # every tier is tallied, best first: 7 Rare from dive 117 plus the dive 118 strip
     assert a1.tiers == {"🌟": 5, "🏮": 0, "🦑": 7, "🐟": 0, "🤡": 1, "🫧": 1, "⬛": 0}
     assert list(a1.tiers) == ["🌟", "🏮", "🦑", "🐟", "🤡", "🫧", "⬛"]
+
+
+def test_week_flops_and_worst_dives():
+    dives = [117, 118, 119, 120, 121, 122, 123]
+    results = [R(1, 117, 300), R(1, 118, 95), R(2, 118, 500), R(3, 120, 95), R(3, 90, 20)]
+    # lowest single dive in the week; ties share it; dive 90 is outside the week
+    assert [(f.user_id, f.dive) for f in week_flops(results, dives)] == [(1, 118), (3, 120)]
+    assert week_flops([R(1, 117, 300)], dives) == []  # one dive is not a flop
+    assert week_flops([R(1, 117, 300), R(2, 117, 300)], dives) == []  # dead level
+    worst = worst_dives(results, n=3)
+    assert [(w.user_id, w.dive, w.score) for w in worst] == [(3, 90, 20), (1, 118, 95), (3, 120, 95)]
+    assert worst_dives([]) == []
 
 
 def test_personal_best_before():
